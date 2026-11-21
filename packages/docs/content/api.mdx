@@ -3149,6 +3149,65 @@ type Output = z.output<typeof trimmed>; // string
 
 This is useful when integrating with libraries like `react-hook-form` that derive their form value type from `z.input<>`.
 
+### `.overwrite()`
+
+While [`.transform()`](#transform) wraps a schema in a `ZodPipe` that can return any type, `.overwrite()` performs an in-place transformation that **does not change the inferred type**. The overwrite function is stored as a check on the schema itself, so it returns an instance of the original schema class rather than a pipe.
+
+<Tabs groupId="lib" items={["Zod", "Zod Mini"]}>
+<Tab value="Zod">
+```ts
+const squared = z.number().overwrite((val) => val ** 2).max(100);
+// => ZodNumber
+
+squared.parse(5); // => 25
+squared.parse(11); // ❌ throws ZodError (121 > 100)
+```
+</Tab>
+<Tab value="Zod Mini">
+```ts
+const squared = z.number().check(z.overwrite((val) => val ** 2), z.maximum(100));
+// => ZodMiniNumber
+
+z.parse(squared, 5); // => 25
+z.parse(squared, 11); // ❌ throws ZodError (121 > 100)
+```
+</Tab>
+</Tabs>
+
+Because `.overwrite()` preserves the original schema class and type:
+
+- **Chainable checks** — You can continue chaining type-specific checks like `.max()` or `.min()` after `.overwrite()`. Checks run in order, so later checks validate the overwritten value.
+- **Introspectable & JSON Schema compatible** — Unlike `.transform()`, which is an opaque black box that throws during [`z.toJSONSchema()`](/json-schema), schemas using `.overwrite()` remain introspectable and convert cleanly to JSON Schema.
+
+<Tabs groupId="lib" items={["Zod", "Zod Mini"]}>
+<Tab value="Zod">
+```ts
+const normalizedTag = z
+  .string()
+  .overwrite((val) => val.trim().replace(/\s+/g, "-").toLowerCase())
+  .min(3);
+
+normalizedTag.parse("  Hello   World  "); // => "hello-world"
+z.toJSONSchema(normalizedTag); // => { type: "string", minLength: 3, ... }
+```
+</Tab>
+<Tab value="Zod Mini">
+```ts
+const normalizedTag = z.string().check(
+  z.overwrite((val) => val.trim().replace(/\s+/g, "-").toLowerCase()),
+  z.minLength(3)
+);
+
+z.parse(normalizedTag, "  Hello   World  "); // => "hello-world"
+z.toJSONSchema(normalizedTag); // => { type: "string", minLength: 3, ... }
+```
+</Tab>
+</Tabs>
+
+<Callout>
+  The overwrite function must be synchronous and return a value of the same type as the schema's output. Built-in string transforms like `.trim()`, `.toLowerCase()`, `.toUpperCase()`, and `.normalize()` are implemented using `.overwrite()`.
+</Callout>
+
 ## Defaults
 
 To set a default value for a schema:
